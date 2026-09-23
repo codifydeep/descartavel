@@ -1,5 +1,7 @@
-# Disposable GitHub integration fixture
+# Disposable implementation evaluation
 
-This private repository exists only to validate PR, CI and merge guards. Preserve
-the existing addition tests. Every feature PR must include Red/Green evidence,
-run the full suite and receive independent review on its exact head SHA.
+Work only under `/workspace`. Add a `multiply(left, right)` function to
+`calc.py`, with automated tests in `test_calc.py`. Follow Red-Green-Refactor:
+run a newly added test and capture its failure before implementation, then
+run it green and run the entire test suite. Do not remove, skip or weaken the
+two existing addition tests. Do not access the network or any other project.
