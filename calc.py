@@ -17,6 +17,10 @@ def cube(value: int) -> int:
     return value * value * value
 
 
+def double(value: int) -> int:
+    return value * 2
+
+
 def negate(value: int) -> int:
     return -value
 

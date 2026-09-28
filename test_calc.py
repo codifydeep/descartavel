@@ -1,6 +1,6 @@
 import unittest
 
-from calc import absolute, add, cube, multiply, negate, square
+from calc import absolute, add, cube, double, multiply, negate, square
 
 
 class CalcTests(unittest.TestCase):
@@ -55,3 +55,11 @@ class AbsoluteTests(unittest.TestCase):
 
     def test_absolute_negative(self):
         self.assertEqual(absolute(-2), 2)
+
+
+class DoubleTests(unittest.TestCase):
+    def test_double_positive(self):
+        self.assertEqual(double(3), 6)
+
+    def test_double_negative(self):
+        self.assertEqual(double(-2), -4)
