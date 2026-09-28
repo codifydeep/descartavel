@@ -19,3 +19,9 @@ def cube(value: int) -> int:
 
 def negate(value: int) -> int:
     return -value
+
+
+def absolute(value: int) -> int:
+    if value < 0:
+        return -value
+    return value
