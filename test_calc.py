@@ -1,6 +1,6 @@
 import unittest
 
-from calc import add, multiply, square
+from calc import add, cube, multiply, square
 
 
 class CalcTests(unittest.TestCase):
@@ -31,3 +31,11 @@ class SquareTests(unittest.TestCase):
 
     def test_square_negative(self):
         self.assertEqual(square(-3), 9)
+
+
+class CubeTests(unittest.TestCase):
+    def test_cube_positive(self):
+        self.assertEqual(cube(3), 27)
+
+    def test_cube_negative(self):
+        self.assertEqual(cube(-2), -8)
