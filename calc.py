@@ -29,3 +29,13 @@ def absolute(value: int) -> int:
     if value < 0:
         return -value
     return value
+
+
+def clamp(value: int, lower: int, upper: int) -> int:
+    if lower > upper:
+        raise ValueError("lower bound must not exceed upper bound")
+    if value < lower:
+        return lower
+    if value > upper:
+        return upper
+    return value
