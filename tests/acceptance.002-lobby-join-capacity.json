@@ -1,0 +1,47 @@
+{
+  "version": 2,
+  "criteria": {
+    "NICK_REQUIRED": {
+      "cases": [
+        "acceptance_d_join_nickname_rules.JoinNicknameRules.test_join_empty_nickname_rejected_visibly_roster_unchanged",
+        "acceptance_d_join_nickname_rules.JoinNicknameRules.test_join_whitespace_only_nickname_rejected_visibly_roster_unchanged"
+      ],
+      "gates": []
+    },
+    "NICK_LIMIT": {
+      "cases": [
+        "acceptance_d_join_nickname_rules.JoinNicknameRules.test_join_21_character_nickname_rejected_visibly_roster_unchanged",
+        "acceptance_d_join_nickname_rules.JoinNicknameRules.test_join_20_character_nickname_after_trim_accepted"
+      ],
+      "gates": []
+    },
+    "JOIN_ROOM": {
+      "cases": [
+        "acceptance_e_join_roster.JoinRoster.test_join_listed_room_shows_same_two_player_roster_in_both_contexts"
+      ],
+      "gates": []
+    },
+    "MAX_TWO": {
+      "cases": [
+        "acceptance_f_capacity.JoinCapacity.test_third_join_rejected_visibly_roster_unchanged"
+      ],
+      "gates": []
+    },
+    "FULL_NOT_JOINABLE": {
+      "cases": [
+        "acceptance_f_capacity.JoinCapacity.test_full_room_not_joinable_in_second_context_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "TWO_CONTEXT_DEMO": {
+      "cases": [
+        "acceptance_e_join_roster.JoinRoster.test_join_listed_room_shows_same_two_player_roster_in_both_contexts"
+      ],
+      "gates": []
+    },
+    "REGRESSION_KEPT": {
+      "cases": [],
+      "gates": ["regression"]
+    }
+  }
+}
