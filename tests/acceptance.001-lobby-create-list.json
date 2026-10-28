@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "criteria": {
+    "EMPTY_LIST": {
+      "cases": [
+        "acceptance_a_empty_list.EmptyList.test_home_shows_empty_state_when_no_waiting_rooms"
+      ],
+      "gates": []
+    },
+    "NICK_REQUIRED": {
+      "cases": [
+        "acceptance_b_nickname_rules.NicknameRules.test_empty_nickname_rejected_visibly_no_room_created",
+        "acceptance_b_nickname_rules.NicknameRules.test_whitespace_only_nickname_rejected_visibly_no_room_created"
+      ],
+      "gates": []
+    },
+    "NICK_LIMIT": {
+      "cases": [
+        "acceptance_b_nickname_rules.NicknameRules.test_21_character_nickname_rejected_visibly_no_room_created",
+        "acceptance_b_nickname_rules.NicknameRules.test_20_character_nickname_after_trim_accepted"
+      ],
+      "gates": []
+    },
+    "CREATE_ROOM": {
+      "cases": [
+        "acceptance_c_create_and_list.CreateAndList.test_create_shows_waiting_for_opponent_with_creator_nickname"
+      ],
+      "gates": []
+    },
+    "LIST_WAITING": {
+      "cases": [
+        "acceptance_c_create_and_list.CreateAndList.test_second_context_sees_waiting_room_within_3_seconds_without_reload"
+      ],
+      "gates": []
+    }
+  }
+}
