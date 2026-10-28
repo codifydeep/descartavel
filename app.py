@@ -31,6 +31,7 @@ PAGE = """<!doctype html>
 <section id="my-room" hidden>
 <p>Your room: <span id="my-room-status">waiting for an opponent</span></p>
 <p>Creator: <span id="my-room-creator"></span></p>
+<ul id="roster" aria-label="Roster"></ul>
 </section>
 <h2>Waiting rooms</h2>
 <p id="empty-state" hidden>No waiting rooms right now. Create one to start.</p>
@@ -41,9 +42,16 @@ PAGE = """<!doctype html>
   var input = document.getElementById('nickname');
   var formError = document.getElementById('form-error');
   var myRoom = document.getElementById('my-room');
+  var myStatus = document.getElementById('my-room-status');
   var myCreator = document.getElementById('my-room-creator');
+  var roster = document.getElementById('roster');
   var list = document.getElementById('room-list');
   var empty = document.getElementById('empty-state');
+  var myRoomId = null;
+  var knownRooms = {};
+  var fullRooms = {};
+  var rowEls = {};
+  var openJoins = {};
 
   function showError(message) {
     formError.textContent = message;
@@ -53,26 +61,6 @@ PAGE = """<!doctype html>
   function clearError() {
     formError.textContent = '';
     formError.hidden = true;
-  }
-
-  function renderRooms(rooms) {
-    list.textContent = '';
-    rooms.forEach(function (room) {
-      var item = document.createElement('li');
-      item.appendChild(document.createTextNode('Room by '));
-      var name = document.createElement('strong');
-      name.textContent = room.creator_nickname;
-      item.appendChild(name);
-      list.appendChild(item);
-    });
-    empty.hidden = rooms.length > 0;
-  }
-
-  function refresh() {
-    fetch('/api/rooms', {cache: 'no-store'})
-      .then(function (response) { return response.json(); })
-      .then(function (body) { renderRooms(body.rooms || []); })
-      .catch(function () {});
   }
 
   function localNicknameError(value) {
@@ -86,6 +74,186 @@ PAGE = """<!doctype html>
     return null;
   }
 
+  function postNickname(url, nickname) {
+    return fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({nickname: nickname})
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        return {ok: response.ok, body: body};
+      });
+    });
+  }
+
+  function renderRoster(players) {
+    roster.textContent = '';
+    players.forEach(function (name) {
+      var item = document.createElement('li');
+      item.textContent = name;
+      roster.appendChild(item);
+    });
+  }
+
+  function showRoom(room) {
+    myRoomId = room.id;
+    myRoom.hidden = false;
+    myCreator.textContent = room.creator_nickname;
+    renderRoster(room.players);
+    myStatus.textContent = room.players.length >= 2 ? 'full' : 'waiting for an opponent';
+  }
+
+  function refreshRoom() {
+    if (!myRoomId) {
+      return;
+    }
+    fetch('/api/rooms/' + myRoomId, {cache: 'no-store'})
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (room) { if (room) { showRoom(room); } })
+      .catch(function () {});
+  }
+
+  function joinRoom(id, value) {
+    clearError();
+    var problem = localNicknameError(value);
+    if (problem) {
+      showError(problem);
+      return;
+    }
+    fetch('/api/rooms/' + id, {cache: 'no-store'})
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (room) {
+        if (room && (room.state !== 'waiting' || room.players.length >= 2)) {
+          showError('This room is full.');
+          return null;
+        }
+        return postNickname('/api/rooms/' + id + '/join', value);
+      })
+      .then(function (result) {
+        if (!result) {
+          return;
+        }
+        if (!result.ok) {
+          showError(result.body.error || 'The room could not be joined.');
+          return;
+        }
+        delete openJoins[id];
+        delete rowEls[id];
+        showRoom(result.body);
+        refresh();
+      })
+      .catch(function () {
+        showError('The room could not be joined. Please try again.');
+      });
+  }
+
+  function buildRow(room, full) {
+    var item = document.createElement('li');
+    item.appendChild(document.createTextNode('Room by '));
+    var name = document.createElement('strong');
+    name.textContent = room.creator_nickname;
+    item.appendChild(name);
+    if (full) {
+      var label = document.createElement('span');
+      label.textContent = 'Full';
+      item.appendChild(label);
+      return item;
+    }
+    if (room.id === myRoomId) {
+      return item;
+    }
+    var joinButton = document.createElement('button');
+    joinButton.type = 'button';
+    joinButton.textContent = 'Join room';
+    joinButton.addEventListener('click', function () {
+      openJoins[room.id] = true;
+      joinButton.hidden = true;
+      var wrap = document.createElement('div');
+      var label = document.createElement('label');
+      var field = document.createElement('input');
+      var submit = document.createElement('button');
+      field.id = 'join-' + room.id;
+      field.type = 'text';
+      field.autocomplete = 'off';
+      label.htmlFor = field.id;
+      label.textContent = 'Join nickname';
+      submit.type = 'button';
+      submit.textContent = 'Join this room';
+      submit.addEventListener('click', function () {
+        joinRoom(room.id, field.value);
+      });
+      wrap.appendChild(label);
+      wrap.appendChild(field);
+      wrap.appendChild(submit);
+      item.appendChild(wrap);
+      field.focus();
+    });
+    item.appendChild(joinButton);
+    return item;
+  }
+
+  function rowFor(room, full) {
+    if (openJoins[room.id] && rowEls[room.id]) {
+      var cached = rowEls[room.id];
+      if (full && !cached.querySelector('.full-label')) {
+        var fullLabel = document.createElement('span');
+        fullLabel.className = 'full-label';
+        fullLabel.textContent = 'Full';
+        cached.appendChild(fullLabel);
+      }
+      return cached;
+    }
+    var item = buildRow(room, full);
+    rowEls[room.id] = item;
+    return item;
+  }
+
+  function renderRooms(waiting) {
+    var children = waiting.map(function (room) { return rowFor(room, false); });
+    Object.keys(fullRooms).forEach(function (id) {
+      children.push(rowFor(fullRooms[id], true));
+    });
+    list.textContent = '';
+    children.forEach(function (child) { list.appendChild(child); });
+    empty.hidden = children.length > 0;
+  }
+
+  function resolveMissing(ids) {
+    return Promise.all(ids.map(function (id) {
+      return fetch('/api/rooms/' + id, {cache: 'no-store'})
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .catch(function () { return null; })
+        .then(function (room) {
+          if (room && room.players.length >= 2) {
+            fullRooms[id] = room;
+          } else {
+            delete knownRooms[id];
+            delete fullRooms[id];
+            delete rowEls[id];
+          }
+        });
+    }));
+  }
+
+  function refresh() {
+    fetch('/api/rooms', {cache: 'no-store'})
+      .then(function (response) { return response.json(); })
+      .then(function (body) {
+        var waiting = body.rooms || [];
+        var present = {};
+        waiting.forEach(function (room) {
+          present[room.id] = true;
+          knownRooms[room.id] = room;
+          delete fullRooms[room.id];
+        });
+        var missing = Object.keys(knownRooms).filter(function (id) { return !present[id]; });
+        return resolveMissing(missing).then(function () {
+          renderRooms(waiting);
+        });
+      })
+      .catch(function () {});
+  }
+
   form.addEventListener('submit', function (event) {
     event.preventDefault();
     clearError();
@@ -94,23 +262,13 @@ PAGE = """<!doctype html>
       showError(problem);
       return;
     }
-    fetch('/api/rooms', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({nickname: input.value})
-    })
-      .then(function (response) {
-        return response.json().then(function (body) {
-          return {ok: response.ok, body: body};
-        });
-      })
+    postNickname('/api/rooms', input.value)
       .then(function (result) {
         if (!result.ok) {
           showError(result.body.error || 'The room could not be created.');
           return;
         }
-        myCreator.textContent = result.body.creator_nickname;
-        myRoom.hidden = false;
+        showRoom(result.body);
         input.value = '';
         refresh();
       })
@@ -121,6 +279,7 @@ PAGE = """<!doctype html>
 
   refresh();
   setInterval(refresh, 1000);
+  setInterval(refreshRoom, 1000);
 })();
 </script>
 </body>
@@ -176,6 +335,25 @@ class RoomStore:
         with self._lock:
             return [self._public(r) for r in self._rooms.values() if r['state'] == 'waiting']
 
+    def get(self, room_id):
+        with self._lock:
+            room = self._rooms.get(room_id)
+            return self._public(room) if room else None
+
+    def join(self, room_id, nickname):
+        """Return (public_room, None) on success or (None, (status, message))."""
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None, (404, 'Room not found.')
+            if room['state'] != 'waiting' or len(room['players']) >= 2:
+                return None, (409, 'This room is full.')
+            room['players'].append(nickname)
+            room['state'] = 'full'
+            log_event(event='room_joined', room_id=room_id, nickname_length=len(nickname))
+            log_event(event='room_full', room_id=room_id)
+            return self._public(room), None
+
 
 STORE = RoomStore()
 
@@ -204,6 +382,11 @@ class Handler(BaseHTTPRequestHandler):
             status, body = 200, {'rooms': STORE.waiting()}
         elif method == 'POST' and path == '/api/rooms':
             status, body = self._create_room()
+        elif method == 'GET' and path.startswith('/api/rooms/'):
+            room = STORE.get(path[len('/api/rooms/'):])
+            status, body = (200, room) if room else (404, {'error': 'not found'})
+        elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/join'):
+            status, body = self._join_room(path[len('/api/rooms/'):-len('/join')])
         else:
             status, body = 404, {'error': 'not found'}
         self._send_json(status, body)
@@ -221,6 +404,22 @@ class Handler(BaseHTTPRequestHandler):
         if error:
             return 400, {'error': error}
         return 201, STORE.create(nickname)
+
+    def _join_room(self, room_id):
+        length = min(int(self.headers.get('Content-Length') or 0), 4096)
+        try:
+            payload = json.loads(self.rfile.read(length) or b'{}')
+        except (ValueError, UnicodeDecodeError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        nickname, error = validate_nickname(payload.get('nickname'))
+        if error:
+            return 400, {'error': error}
+        room, failure = STORE.join(room_id, nickname)
+        if failure:
+            return failure[0], {'error': failure[1]}
+        return 200, room
 
     def _send_json(self, status, body):
         self._send(status, json.dumps(body).encode('utf-8'), 'application/json')
