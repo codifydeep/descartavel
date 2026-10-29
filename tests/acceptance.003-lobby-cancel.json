@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "criteria": {
+    "CANCEL_BY_CREATOR": {
+      "cases": [
+        "acceptance_g_cancel.CancelRoom.test_creator_cancel_removes_waiting_room_from_home_list",
+        "acceptance_g_cancel.CancelRoom.test_visitor_sees_no_cancel_control_and_non_creator_cancel_rejected"
+      ],
+      "gates": []
+    },
+    "CANCEL_ONLY_WAITING": {
+      "cases": [
+        "acceptance_g_cancel.CancelRoom.test_full_room_has_no_enabled_cancel_and_server_rejects_cancel_409"
+      ],
+      "gates": []
+    },
+    "CANCEL_PROPAGATES": {
+      "cases": [
+        "acceptance_g_cancel.CancelRoom.test_cancel_propagates_to_second_context_home_list_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "JOIN_CANCELLED_MESSAGE": {
+      "cases": [
+        "acceptance_g_cancel.CancelRoom.test_join_cancelled_room_shows_english_message_and_roster_unchanged"
+      ],
+      "gates": []
+    }
+  }
+}
