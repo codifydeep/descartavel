@@ -11,6 +11,7 @@ import time
 import uuid
 
 MAX_NICKNAME = 20
+BROWSER_COOKIE = 'lobby_browser'
 
 PAGE = """<!doctype html>
 <html lang="en">
@@ -32,6 +33,7 @@ PAGE = """<!doctype html>
 <p>Your room: <span id="my-room-status">waiting for an opponent</span></p>
 <p>Creator: <span id="my-room-creator"></span></p>
 <ul id="roster" aria-label="Roster"></ul>
+<button type="button" id="cancel-room" hidden>Cancel room</button>
 </section>
 <h2>Waiting rooms</h2>
 <p id="empty-state" hidden>No waiting rooms right now. Create one to start.</p>
@@ -52,6 +54,10 @@ PAGE = """<!doctype html>
   var fullRooms = {};
   var rowEls = {};
   var openJoins = {};
+  var cancelledRooms = {};
+  var submitButtons = {};
+  var cancelButton = document.getElementById('cancel-room');
+  var myRoomIsMine = false;
 
   function showError(message) {
     formError.textContent = message;
@@ -100,8 +106,37 @@ PAGE = """<!doctype html>
     myRoom.hidden = false;
     myCreator.textContent = room.creator_nickname;
     renderRoster(room.players);
-    myStatus.textContent = room.players.length >= 2 ? 'full' : 'waiting for an opponent';
+    if (room.state === 'cancelled') {
+      myStatus.textContent = 'cancelled';
+    } else {
+      myStatus.textContent = room.players.length >= 2 ? 'full' : 'waiting for an opponent';
+    }
+    cancelButton.hidden = !(myRoomIsMine && room.state === 'waiting' && room.players.length < 2);
   }
+
+  function cancelMyRoom() {
+    clearError();
+    fetch('/api/rooms/' + myRoomId + '/cancel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}'
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        return {ok: response.ok, body: body};
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        showError(result.body.error || 'The room could not be cancelled.');
+        return;
+      }
+      showRoom(result.body);
+      refresh();
+    }).catch(function () {
+      showError('The room could not be cancelled. Please try again.');
+    });
+  }
+
+  cancelButton.addEventListener('click', cancelMyRoom);
 
   function refreshRoom() {
     if (!myRoomId) {
@@ -115,6 +150,10 @@ PAGE = """<!doctype html>
 
   function joinRoom(id, value) {
     clearError();
+    if (cancelledRooms[id]) {
+      showError('This room was cancelled.');
+      return;
+    }
     var problem = localNicknameError(value);
     if (problem) {
       showError(problem);
@@ -123,6 +162,10 @@ PAGE = """<!doctype html>
     fetch('/api/rooms/' + id, {cache: 'no-store'})
       .then(function (response) { return response.ok ? response.json() : null; })
       .then(function (room) {
+        if (room && room.state === 'cancelled') {
+          showError('This room was cancelled.');
+          return null;
+        }
         if (room && (room.state !== 'waiting' || room.players.length >= 2)) {
           showError('This room is full.');
           return null;
@@ -139,6 +182,7 @@ PAGE = """<!doctype html>
         }
         delete openJoins[id];
         delete rowEls[id];
+        myRoomIsMine = false;
         showRoom(result.body);
         refresh();
       })
@@ -179,6 +223,10 @@ PAGE = """<!doctype html>
       label.textContent = 'Join nickname';
       submit.type = 'button';
       submit.textContent = 'Join this room';
+      submitButtons[room.id] = submit;
+      if (cancelledRooms[room.id]) {
+        submit.disabled = true;
+      }
       submit.addEventListener('click', function () {
         joinRoom(room.id, field.value);
       });
@@ -224,6 +272,12 @@ PAGE = """<!doctype html>
         .then(function (response) { return response.ok ? response.json() : null; })
         .catch(function () { return null; })
         .then(function (room) {
+          if (room && room.state === 'cancelled') {
+            cancelledRooms[id] = true;
+            if (submitButtons[id]) {
+              submitButtons[id].disabled = true;
+            }
+          }
           if (room && room.players.length >= 2) {
             fullRooms[id] = room;
           } else {
@@ -268,6 +322,7 @@ PAGE = """<!doctype html>
           showError(result.body.error || 'The room could not be created.');
           return;
         }
+        myRoomIsMine = true;
         showRoom(result.body);
         input.value = '';
         refresh();
@@ -319,11 +374,12 @@ class RoomStore:
             'state': room['state'],
         }
 
-    def create(self, nickname):
+    def create(self, nickname, creator_token):
         with self._lock:
             room = {
                 'id': uuid.uuid4().hex,
                 'creator_nickname': nickname,
+                'creator_token': creator_token,
                 'players': [nickname],
                 'state': 'waiting',
             }
@@ -340,12 +396,28 @@ class RoomStore:
             room = self._rooms.get(room_id)
             return self._public(room) if room else None
 
+    def cancel(self, room_id, creator_token):
+        """Return (public_room, None) on success or (None, (status, message))."""
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None, (404, 'Room not found.')
+            if not creator_token or creator_token != room['creator_token']:
+                return None, (403, 'Only the room creator can cancel this room.')
+            if room['state'] != 'waiting' or len(room['players']) >= 2:
+                return None, (409, 'This room can no longer be cancelled.')
+            room['state'] = 'cancelled'
+            log_event(event='room_cancelled', room_id=room_id)
+            return self._public(room), None
+
     def join(self, room_id, nickname):
         """Return (public_room, None) on success or (None, (status, message))."""
         with self._lock:
             room = self._rooms.get(room_id)
             if room is None:
                 return None, (404, 'Room not found.')
+            if room['state'] == 'cancelled':
+                return None, (409, 'This room was cancelled.')
             if room['state'] != 'waiting' or len(room['players']) >= 2:
                 return None, (409, 'This room is full.')
             room['players'].append(nickname)
@@ -361,6 +433,7 @@ STORE = RoomStore()
 class Handler(BaseHTTPRequestHandler):
     server_version = 'TrucoLobby'
     sys_version = ''
+    _set_cookie = None
 
     def do_GET(self):
         self._dispatch('GET')
@@ -385,12 +458,22 @@ class Handler(BaseHTTPRequestHandler):
         elif method == 'GET' and path.startswith('/api/rooms/'):
             room = STORE.get(path[len('/api/rooms/'):])
             status, body = (200, room) if room else (404, {'error': 'not found'})
+        elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/cancel'):
+            room, failure = STORE.cancel(path[len('/api/rooms/'):-len('/cancel')], self._browser_token())
+            status, body = (200, room) if room else (failure[0], {'error': failure[1]})
         elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/join'):
             status, body = self._join_room(path[len('/api/rooms/'):-len('/join')])
         else:
             status, body = 404, {'error': 'not found'}
         self._send_json(status, body)
         self._log(method, path, status, started)
+
+    def _browser_token(self):
+        for part in (self.headers.get('Cookie') or '').split(';'):
+            name, _, value = part.strip().partition('=')
+            if name == BROWSER_COOKIE and value:
+                return value
+        return None
 
     def _create_room(self):
         length = min(int(self.headers.get('Content-Length') or 0), 4096)
@@ -403,7 +486,11 @@ class Handler(BaseHTTPRequestHandler):
         nickname, error = validate_nickname(payload.get('nickname'))
         if error:
             return 400, {'error': error}
-        return 201, STORE.create(nickname)
+        token = self._browser_token()
+        if not token:
+            token = uuid.uuid4().hex
+            self._set_cookie = '%s=%s; Path=/; HttpOnly; SameSite=Lax' % (BROWSER_COOKIE, token)
+        return 201, STORE.create(nickname, token)
 
     def _join_room(self, room_id):
         length = min(int(self.headers.get('Content-Length') or 0), 4096)
@@ -428,6 +515,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(data)))
+        if self._set_cookie:
+            self.send_header('Set-Cookie', self._set_cookie)
         self.end_headers()
         self.wfile.write(data)
 
