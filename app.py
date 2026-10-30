@@ -36,6 +36,7 @@ PAGE = """<!doctype html>
 <button type="button" id="cancel-room" hidden>Cancel room</button>
 <p id="ready-status" hidden>Waiting for readiness</p>
 <button type="button" id="ready-toggle" hidden>Mark ready</button>
+<button type="button" id="leave-room" hidden>Leave room</button>
 </section>
 <h2>Waiting rooms</h2>
 <p id="empty-state" hidden>No waiting rooms right now. Create one to start.</p>
@@ -60,6 +61,7 @@ PAGE = """<!doctype html>
   var submitButtons = {};
   var cancelButton = document.getElementById('cancel-room');
   var readyToggle = document.getElementById('ready-toggle');
+  var leaveButton = document.getElementById('leave-room');
   var readyStatus = document.getElementById('ready-status');
   var myRoomIsMine = false;
   var myReady = [];
@@ -120,8 +122,9 @@ PAGE = """<!doctype html>
     } else {
       myStatus.textContent = room.players.length >= 2 ? 'full' : 'waiting for an opponent';
     }
-    cancelButton.hidden = !(myRoomIsMine && room.state === 'waiting' && room.players.length < 2);
+    cancelButton.hidden = !(myViewer === 0 && room.state === 'waiting' && room.players.length < 2);
     var full = room.state === 'full' && room.players.length >= 2;
+    leaveButton.hidden = !(full && myViewer !== null);
     readyToggle.hidden = !(full && myViewer !== null);
     if (myViewer !== null) {
       readyToggle.textContent = myReady[myViewer] ? 'Unmark ready' : 'Mark ready';
@@ -184,6 +187,42 @@ PAGE = """<!doctype html>
   }
 
   cancelButton.addEventListener('click', cancelMyRoom);
+
+  function leaveMyRoom() {
+    clearError();
+    if (!myRoomId) {
+      return;
+    }
+    myRoom.hidden = true;
+    fetch('/api/rooms/' + myRoomId + '/leave', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}'
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        return {ok: response.ok, body: body};
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        myRoom.hidden = false;
+        showError(result.body.error || 'The room could not be left.');
+        refreshRoom();
+        return;
+      }
+      myRoomId = null;
+      myRoomIsMine = false;
+      myViewer = null;
+      myReady = [];
+      myRoom.hidden = true;
+      refresh();
+    }).catch(function () {
+      myRoom.hidden = false;
+      showError('The room could not be left. Please try again.');
+      refreshRoom();
+    });
+  }
+
+  leaveButton.addEventListener('click', leaveMyRoom);
 
   function refreshRoom() {
     if (!myRoomId) {
@@ -497,6 +536,33 @@ class RoomStore:
             log_event(event='room_full', room_id=room_id)
             return self._view(room, joiner_token), None
 
+    def leave(self, room_id, token):
+        """Remove the caller from a full room. Return (public_room, None) or (None, (status, message)).
+
+        Joiner leaves: creator stays owner. Creator leaves: remaining participant becomes owner.
+        Either way the room becomes waiting and both Ready states are cleared.
+        """
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None or room['state'] == 'cancelled':
+                return None, (404, 'Room not found.')
+            slot = self._slot(room, token)
+            if slot is None:
+                return None, (403, 'Only a participant of this room can leave it.')
+            if room['state'] != 'full' or len(room['players']) < 2:
+                return None, (409, 'Leave is available only when the room is full.')
+            if slot == 0:
+                room['creator_token'] = room['joiner_token']
+                room['creator_nickname'] = room['players'][1]
+                room['players'] = [room['players'][1]]
+            else:
+                room['players'] = [room['players'][0]]
+            room['joiner_token'] = None
+            room['ready'] = [False, False]
+            room['state'] = 'waiting'
+            log_event(event='room_left', room_id=room_id)
+            return self._public(room), None
+
     def set_ready(self, room_id, token, ready):
         """Set the caller's own ready flag. Return (view, None) or (None, (status, message))."""
         with self._lock:
@@ -549,6 +615,9 @@ class Handler(BaseHTTPRequestHandler):
             status, body = (200, room) if room else (failure[0], {'error': failure[1]})
         elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/join'):
             status, body = self._join_room(path[len('/api/rooms/'):-len('/join')])
+        elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/leave'):
+            room, failure = STORE.leave(path[len('/api/rooms/'):-len('/leave')], self._browser_token())
+            status, body = (200, room) if room else (failure[0], {'error': failure[1]})
         elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/ready'):
             status, body = self._set_ready(path[len('/api/rooms/'):-len('/ready')])
         else:
