@@ -86,9 +86,7 @@ class ReadyMark(AcceptanceTest):
     def open_home(self):
         context = self.new_context()
         page = context.new_page()
-        errors = []
-        page.on('pageerror', lambda error: errors.append(str(error)))
-        page.on('console', lambda message: errors.append(message.text) if message.type == 'error' else None)
+        errors = self._browser_errors
         page.goto(self.target + '/', wait_until='domcontentloaded')
         expect(page.get_by_label('Nickname', exact=True)).to_be_visible(timeout=3000)
         expect(page.get_by_role('button', name='Create room')).to_be_visible(timeout=3000)
@@ -123,7 +121,7 @@ class ReadyMark(AcceptanceTest):
             'room_id': room_id,
             'creator_page': creator_page,
             'joiner_page': joiner_page,
-            'errors': creator_errors + joiner_errors,
+            'errors': self._browser_errors,
         }
 
     def wait_until(self, predicate, message):
