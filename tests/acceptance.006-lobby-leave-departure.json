@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "criteria": {
+    "LEAVE_FULL_ROOM_ONLY": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_waiting_room_has_no_leave_control_and_leave_is_409"
+      ],
+      "gates": []
+    },
+    "LEAVE_PARTICIPANT_ONLY": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_non_participant_leave_is_403_and_state_unchanged",
+        "acceptance_j_leave_departure.LeaveDeparture.test_second_leave_by_departed_browser_is_403",
+        "acceptance_j_leave_departure.LeaveDeparture.test_cancelled_room_stale_leave_maps_to_existing_error_and_no_change"
+      ],
+      "gates": []
+    },
+    "LEAVE_JOINER_KEEPS_CREATOR": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_joiner_leave_returns_joiner_to_lobby_and_creator_stays_owner_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "LEAVE_CREATOR_TRANSFER": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_creator_leave_transfers_ownership_and_cancel_control_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "LEAVE_READY_RESET": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_departure_clears_both_ready_states"
+      ],
+      "gates": []
+    },
+    "LEAVE_CONSISTENT_REMAINING": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_joiner_leave_returns_joiner_to_lobby_and_creator_stays_owner_within_3_seconds",
+        "acceptance_j_leave_departure.LeaveDeparture.test_creator_leave_transfers_ownership_and_cancel_control_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "REGRESSION_KEPT": {
+      "cases": [
+        "acceptance_j_leave_departure.LeaveDeparture.test_create_and_join_flow_still_works"
+      ],
+      "gates": []
+    }
+  }
+}
