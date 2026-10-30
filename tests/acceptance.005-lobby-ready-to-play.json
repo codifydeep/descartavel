@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "criteria": {
+    "READY_TO_PLAY_BOTH": {
+      "cases": [
+        "acceptance_i_ready_to_play.ReadyToPlay.test_both_ready_shows_ready_to_play_in_both_browsers_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "READY_WAITING_REVERT": {
+      "cases": [
+        "acceptance_i_ready_to_play.ReadyToPlay.test_unmark_reverts_to_waiting_in_both_browsers_within_3_seconds",
+        "acceptance_i_ready_to_play.ReadyToPlay.test_creator_unmark_reverts_to_waiting_in_both_browsers_within_3_seconds",
+        "acceptance_i_ready_to_play.ReadyToPlay.test_single_ready_participant_never_shows_ready_to_play"
+      ],
+      "gates": []
+    },
+    "REGRESSION_KEPT": {
+      "cases": [
+        "acceptance_i_ready_to_play.ReadyToPlay.test_full_ready_room_keeps_two_player_roster_and_stays_unjoinable"
+      ],
+      "gates": ["regression"]
+    }
+  }
+}

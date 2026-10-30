@@ -126,7 +126,12 @@ PAGE = """<!doctype html>
     if (myViewer !== null) {
       readyToggle.textContent = myReady[myViewer] ? 'Unmark ready' : 'Mark ready';
     }
-    readyStatus.hidden = !(full && !(myReady[0] && myReady[1]));
+    if (full) {
+      readyStatus.textContent = (myReady[0] && myReady[1]) ? 'Ready to play' : 'Waiting for readiness';
+    } else {
+      readyStatus.textContent = '';
+    }
+    readyStatus.hidden = !full;
   }
 
   function toggleReady() {
