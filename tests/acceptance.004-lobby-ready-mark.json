@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "criteria": {
+    "READY_OWN_TOGGLE": {
+      "cases": [
+        "acceptance_h_ready_mark.ReadyMark.test_participant_marks_and_unmarks_own_ready_only"
+      ],
+      "gates": []
+    },
+    "READY_FULL_ROOM_ONLY": {
+      "cases": [
+        "acceptance_h_ready_mark.ReadyMark.test_ready_controls_only_in_full_room_and_waiting_request_409"
+      ],
+      "gates": []
+    },
+    "READY_NON_PARTICIPANT_REJECTED": {
+      "cases": [
+        "acceptance_h_ready_mark.ReadyMark.test_non_participant_ready_request_403_and_no_control"
+      ],
+      "gates": []
+    },
+    "READY_CONSISTENT_BOTH": {
+      "cases": [
+        "acceptance_h_ready_mark.ReadyMark.test_both_browsers_show_same_ready_state_within_3_seconds"
+      ],
+      "gates": []
+    }
+  }
+}
