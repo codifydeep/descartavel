@@ -34,6 +34,8 @@ PAGE = """<!doctype html>
 <p>Creator: <span id="my-room-creator"></span></p>
 <ul id="roster" aria-label="Roster"></ul>
 <button type="button" id="cancel-room" hidden>Cancel room</button>
+<p id="ready-status" hidden>Waiting for readiness</p>
+<button type="button" id="ready-toggle" hidden>Mark ready</button>
 </section>
 <h2>Waiting rooms</h2>
 <p id="empty-state" hidden>No waiting rooms right now. Create one to start.</p>
@@ -57,7 +59,11 @@ PAGE = """<!doctype html>
   var cancelledRooms = {};
   var submitButtons = {};
   var cancelButton = document.getElementById('cancel-room');
+  var readyToggle = document.getElementById('ready-toggle');
+  var readyStatus = document.getElementById('ready-status');
   var myRoomIsMine = false;
+  var myReady = [];
+  var myViewer = null;
 
   function showError(message) {
     formError.textContent = message;
@@ -92,11 +98,12 @@ PAGE = """<!doctype html>
     });
   }
 
-  function renderRoster(players) {
+  function renderRoster(players, ready) {
     roster.textContent = '';
-    players.forEach(function (name) {
+    players.forEach(function (name, index) {
       var item = document.createElement('li');
       item.textContent = name;
+      item.setAttribute('data-ready', ready[index] ? 'true' : 'false');
       roster.appendChild(item);
     });
   }
@@ -105,14 +112,49 @@ PAGE = """<!doctype html>
     myRoomId = room.id;
     myRoom.hidden = false;
     myCreator.textContent = room.creator_nickname;
-    renderRoster(room.players);
+    myReady = room.ready || [];
+    myViewer = typeof room.viewer === 'number' ? room.viewer : null;
+    renderRoster(room.players, myReady);
     if (room.state === 'cancelled') {
       myStatus.textContent = 'cancelled';
     } else {
       myStatus.textContent = room.players.length >= 2 ? 'full' : 'waiting for an opponent';
     }
     cancelButton.hidden = !(myRoomIsMine && room.state === 'waiting' && room.players.length < 2);
+    var full = room.state === 'full' && room.players.length >= 2;
+    readyToggle.hidden = !(full && myViewer !== null);
+    if (myViewer !== null) {
+      readyToggle.textContent = myReady[myViewer] ? 'Unmark ready' : 'Mark ready';
+    }
+    readyStatus.hidden = !(full && !(myReady[0] && myReady[1]));
   }
+
+  function toggleReady() {
+    clearError();
+    if (myViewer === null || !myRoomId) {
+      return;
+    }
+    var next = !myReady[myViewer];
+    fetch('/api/rooms/' + myRoomId + '/ready', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ready: next})
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        return {ok: response.ok, body: body};
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        showError(result.body.error || 'Ready could not be changed.');
+        return;
+      }
+      showRoom(result.body);
+    }).catch(function () {
+      showError('Ready could not be changed. Please try again.');
+    });
+  }
+
+  readyToggle.addEventListener('click', toggleReady);
 
   function cancelMyRoom() {
     clearError();
@@ -374,27 +416,47 @@ class RoomStore:
             'state': room['state'],
         }
 
+    @staticmethod
+    def _view(room, token):
+        """Room view for one caller: adds per-slot ready flags and the caller's slot."""
+        view = RoomStore._public(room)
+        view['ready'] = list(room['ready'][:len(room['players'])])
+        view['viewer'] = RoomStore._slot(room, token)
+        return view
+
+    @staticmethod
+    def _slot(room, token):
+        if not token:
+            return None
+        if token == room['creator_token']:
+            return 0
+        if room['joiner_token'] is not None and token == room['joiner_token']:
+            return 1
+        return None
+
     def create(self, nickname, creator_token):
         with self._lock:
             room = {
                 'id': uuid.uuid4().hex,
                 'creator_nickname': nickname,
                 'creator_token': creator_token,
+                'joiner_token': None,
                 'players': [nickname],
+                'ready': [False, False],
                 'state': 'waiting',
             }
             self._rooms[room['id']] = room
             log_event(event='room_created', room_id=room['id'], nickname_length=len(nickname))
-            return self._public(room)
+            return self._view(room, creator_token)
 
     def waiting(self):
         with self._lock:
             return [self._public(r) for r in self._rooms.values() if r['state'] == 'waiting']
 
-    def get(self, room_id):
+    def get(self, room_id, token=None):
         with self._lock:
             room = self._rooms.get(room_id)
-            return self._public(room) if room else None
+            return self._view(room, token) if room else None
 
     def cancel(self, room_id, creator_token):
         """Return (public_room, None) on success or (None, (status, message))."""
@@ -410,8 +472,11 @@ class RoomStore:
             log_event(event='room_cancelled', room_id=room_id)
             return self._public(room), None
 
-    def join(self, room_id, nickname):
-        """Return (public_room, None) on success or (None, (status, message))."""
+    def join(self, room_id, nickname, joiner_token):
+        """Return (public_room, None) on success or (None, (status, message)).
+
+        Callers must pass a non-empty joiner_token; it is recorded as the joiner slot.
+        """
         with self._lock:
             room = self._rooms.get(room_id)
             if room is None:
@@ -421,10 +486,26 @@ class RoomStore:
             if room['state'] != 'waiting' or len(room['players']) >= 2:
                 return None, (409, 'This room is full.')
             room['players'].append(nickname)
+            room['joiner_token'] = joiner_token
             room['state'] = 'full'
             log_event(event='room_joined', room_id=room_id, nickname_length=len(nickname))
             log_event(event='room_full', room_id=room_id)
-            return self._public(room), None
+            return self._view(room, joiner_token), None
+
+    def set_ready(self, room_id, token, ready):
+        """Set the caller's own ready flag. Return (view, None) or (None, (status, message))."""
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None, (404, 'Room not found.')
+            slot = self._slot(room, token)
+            if slot is None:
+                return None, (403, 'Only a participant of this room can mark ready.')
+            if room['state'] != 'full' or len(room['players']) < 2:
+                return None, (409, 'Ready is available only when the room is full.')
+            room['ready'][slot] = ready
+            log_event(event='room_ready_changed', room_id=room_id)
+            return self._view(room, token), None
 
 
 STORE = RoomStore()
@@ -456,13 +537,15 @@ class Handler(BaseHTTPRequestHandler):
         elif method == 'POST' and path == '/api/rooms':
             status, body = self._create_room()
         elif method == 'GET' and path.startswith('/api/rooms/'):
-            room = STORE.get(path[len('/api/rooms/'):])
+            room = STORE.get(path[len('/api/rooms/'):], self._browser_token())
             status, body = (200, room) if room else (404, {'error': 'not found'})
         elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/cancel'):
             room, failure = STORE.cancel(path[len('/api/rooms/'):-len('/cancel')], self._browser_token())
             status, body = (200, room) if room else (failure[0], {'error': failure[1]})
         elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/join'):
             status, body = self._join_room(path[len('/api/rooms/'):-len('/join')])
+        elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/ready'):
+            status, body = self._set_ready(path[len('/api/rooms/'):-len('/ready')])
         else:
             status, body = 404, {'error': 'not found'}
         self._send_json(status, body)
@@ -503,7 +586,24 @@ class Handler(BaseHTTPRequestHandler):
         nickname, error = validate_nickname(payload.get('nickname'))
         if error:
             return 400, {'error': error}
-        room, failure = STORE.join(room_id, nickname)
+        token = self._browser_token()
+        if not token:
+            token = uuid.uuid4().hex
+            self._set_cookie = '%s=%s; Path=/; HttpOnly; SameSite=Lax' % (BROWSER_COOKIE, token)
+        room, failure = STORE.join(room_id, nickname, token)
+        if failure:
+            return failure[0], {'error': failure[1]}
+        return 200, room
+
+    def _set_ready(self, room_id):
+        length = min(int(self.headers.get('Content-Length') or 0), 4096)
+        try:
+            payload = json.loads(self.rfile.read(length) or b'{}')
+        except (ValueError, UnicodeDecodeError):
+            payload = {}
+        if not isinstance(payload, dict) or not isinstance(payload.get('ready'), bool):
+            return 400, {'error': 'Ready must be true or false.'}
+        room, failure = STORE.set_ready(room_id, self._browser_token(), payload['ready'])
         if failure:
             return failure[0], {'error': failure[1]}
         return 200, room
