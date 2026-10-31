@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "criteria": {
+    "DISCOVERY_OPEN_SEAT": {
+      "cases": [
+        "acceptance_k_open_seat_join.OpenSeatJoin.test_waiting_room_shows_open_seat_and_join_control",
+        "acceptance_k_open_seat_join.OpenSeatJoin.test_full_room_shows_no_open_seat_and_no_join_control"
+      ],
+      "gates": []
+    },
+    "JOIN_REPLACEMENT": {
+      "cases": [
+        "acceptance_k_open_seat_join.OpenSeatJoin.test_independent_browser_fills_open_seat_and_both_show_full_within_3_seconds"
+      ],
+      "gates": []
+    },
+    "REPLACEMENT_READY_RESET": {
+      "cases": [
+        "acceptance_k_open_seat_join.OpenSeatJoin.test_replacement_entry_clears_both_ready_states_and_shows_waiting_for_readiness"
+      ],
+      "gates": []
+    },
+    "REGRESSION_KEPT": {
+      "cases": [
+        "acceptance_k_open_seat_join.OpenSeatJoin.test_third_join_after_replacement_refused_full_roster_unchanged"
+      ],
+      "gates": []
+    }
+  }
+}

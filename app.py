@@ -289,6 +289,11 @@ PAGE = """<!doctype html>
       item.appendChild(label);
       return item;
     }
+    if (room.players.length === 1) {
+      var seat = document.createElement('span');
+      seat.textContent = 'Open seat';
+      item.appendChild(seat);
+    }
     if (room.id === myRoomId) {
       return item;
     }
