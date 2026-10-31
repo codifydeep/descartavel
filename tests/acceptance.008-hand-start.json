@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "criteria": {
+    "LOBBY_BASELINE_KEPT": {
+      "cases": [
+        "acceptance_l_hand_start.HandStart.test_lobby_baseline_create_join_and_ready_still_work_before_start"
+      ],
+      "gates": []
+    },
+    "HAND_START_CONTROL": {
+      "cases": [
+        "acceptance_l_hand_start.HandStart.test_start_control_visible_to_both_only_when_full_and_both_ready"
+      ],
+      "gates": []
+    },
+    "HAND_START_BY_PARTICIPANT": {
+      "cases": [
+        "acceptance_l_hand_start.HandStart.test_either_participant_starts_hand_and_non_participant_gets_403",
+        "acceptance_l_hand_start.HandStart.test_request_when_not_both_ready_is_409_and_state_unchanged",
+        "acceptance_l_hand_start.HandStart.test_request_when_room_not_full_is_409_and_state_unchanged"
+      ],
+      "gates": []
+    },
+    "HAND_START_ONCE": {
+      "cases": [
+        "acceptance_l_hand_start.HandStart.test_first_start_begins_hand_and_later_start_is_409_without_state_change"
+      ],
+      "gates": []
+    },
+    "HAND_READY_BEFORE_START": {
+      "cases": [
+        "acceptance_l_hand_start.HandStart.test_unmarking_ready_hides_start_and_starts_nothing",
+        "acceptance_l_hand_start.HandStart.test_leaving_after_both_ready_hides_start_and_starts_nothing"
+      ],
+      "gates": []
+    }
+  }
+}

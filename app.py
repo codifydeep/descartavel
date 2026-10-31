@@ -37,6 +37,7 @@ PAGE = """<!doctype html>
 <p id="ready-status" hidden>Waiting for readiness</p>
 <button type="button" id="ready-toggle" hidden>Mark ready</button>
 <button type="button" id="leave-room" hidden>Leave room</button>
+<button type="button" id="start-hand" hidden>Start hand</button>
 </section>
 <h2>Waiting rooms</h2>
 <p id="empty-state" hidden>No waiting rooms right now. Create one to start.</p>
@@ -63,6 +64,7 @@ PAGE = """<!doctype html>
   var readyToggle = document.getElementById('ready-toggle');
   var leaveButton = document.getElementById('leave-room');
   var readyStatus = document.getElementById('ready-status');
+  var startButton = document.getElementById('start-hand');
   var myRoomIsMine = false;
   var myReady = [];
   var myViewer = null;
@@ -126,6 +128,7 @@ PAGE = """<!doctype html>
     var full = room.state === 'full' && room.players.length >= 2;
     leaveButton.hidden = !(full && myViewer !== null);
     readyToggle.hidden = !(full && myViewer !== null);
+    startButton.hidden = !(full && myViewer !== null && myReady[0] && myReady[1]);
     if (myViewer !== null) {
       readyToggle.textContent = myReady[myViewer] ? 'Unmark ready' : 'Mark ready';
     }
@@ -163,6 +166,33 @@ PAGE = """<!doctype html>
   }
 
   readyToggle.addEventListener('click', toggleReady);
+
+  function startHand() {
+    clearError();
+    if (!myRoomId) {
+      return;
+    }
+    fetch('/api/rooms/' + myRoomId + '/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}'
+    }).then(function (response) {
+      return response.json().then(function (body) {
+        return {ok: response.ok, body: body};
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        showError(result.body.error || 'The hand could not be started.');
+        refreshRoom();
+        return;
+      }
+      showRoom(result.body);
+    }).catch(function () {
+      showError('The hand could not be started. Please try again.');
+    });
+  }
+
+  startButton.addEventListener('click', startHand);
 
   function cancelMyRoom() {
     clearError();
@@ -568,6 +598,29 @@ class RoomStore:
             log_event(event='room_left', room_id=room_id)
             return self._public(room), None
 
+    def start(self, room_id, token):
+        """Begin the room's one hand. Return (view, None) or (None, (status, message)).
+
+        The check and the transition happen under the room lock, so the first
+        successful start wins and every later start is refused with no state change.
+        """
+        with self._lock:
+            room = self._rooms.get(room_id)
+            if room is None:
+                return None, (404, 'Room not found.')
+            slot = self._slot(room, token)
+            if slot is None:
+                return None, (403, 'Only a participant of this room can start the hand.')
+            if room['state'] in ('playing', 'finished'):
+                return None, (409, 'The hand has already started in this room.')
+            if room['state'] != 'full' or len(room['players']) < 2:
+                return None, (409, 'The hand can start only when the room is full.')
+            if not (room['ready'][0] and room['ready'][1]):
+                return None, (409, 'The hand can start only when both participants are Ready.')
+            room['state'] = 'playing'
+            log_event(event='hand_started', room_id=room_id)
+            return self._view(room, token), None
+
     def set_ready(self, room_id, token, ready):
         """Set the caller's own ready flag. Return (view, None) or (None, (status, message))."""
         with self._lock:
@@ -625,6 +678,9 @@ class Handler(BaseHTTPRequestHandler):
             status, body = (200, room) if room else (failure[0], {'error': failure[1]})
         elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/ready'):
             status, body = self._set_ready(path[len('/api/rooms/'):-len('/ready')])
+        elif method == 'POST' and path.startswith('/api/rooms/') and path.endswith('/start'):
+            room, failure = STORE.start(path[len('/api/rooms/'):-len('/start')], self._browser_token())
+            status, body = (200, room) if room else (failure[0], {'error': failure[1]})
         else:
             status, body = 404, {'error': 'not found'}
         self._send_json(status, body)
